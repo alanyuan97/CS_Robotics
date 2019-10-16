@@ -13,6 +13,7 @@ Commit should start with
 * __`BUG: `__ for bug fix
 * __`WK{numer}: `__ for features related to assement in that week
 * __`TOL: `__ for general productivity tools
+* __`MIN:`__ for unimportant changes
 
 Note that there is __a space__ after `:` for each per-fix. \
 It then should be followed by short phrase describe what this commit is about.
@@ -35,7 +36,7 @@ For cases below __merge__ should be used via pull-request and code review:
 
 For cases below __rebase__ should be used, to make history clear to read:
 
-* pull from `master` to any other branch
+* pull from `master` to `dev/{week_num}`
 * pull from `dev/{week_num}` to `dev/{week_num}/{task_name}`
 
 ### User management

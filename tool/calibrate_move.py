@@ -40,8 +40,8 @@ try:
 
         elif line.find(" ") > 0:
             s = line.find(" ")
-            BP.set_motor_power(M_RIGHT, line[:s])
-            BP.set_motor_power(M_LEFT, line[s+1:])
+            BP.set_motor_dps(M_RIGHT, line[:s])
+            BP.set_motor_dps(M_LEFT, line[s+1:])
 
         print(f"R: {BP.get_motor_encoder(M_LEFT)} L:{BP.get_motor_encoder(M_RIGHT)}")
 

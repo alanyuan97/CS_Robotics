@@ -11,7 +11,7 @@
 # 
 # Hardware: Connect EV3 or NXT motors to the BrickPi3 motor ports A and D. Make sure that the BrickPi3 is running on a 9v power supply.
 #
-# Results:  When you run this program, motor A will run to match the position of motor D. Manually rotate motor D, and motor A will follow.
+# Results:  When you run this program, Motor B will run to match the position of Motor C. Manually rotate Motor C, and Motor B will follow.
 
 from __future__ import print_function # use python 3 syntax but make it compatible with python 2
 from __future__ import division       #                           ''
@@ -23,28 +23,28 @@ BP = brickpi3.BrickPi3() # Create an instance of the BrickPi3 class. BP will be 
 
 try:
     try:
-        BP.offset_motor_encoder(BP.PORT_A, BP.get_motor_encoder(BP.PORT_A)) # reset encoder A
-        BP.offset_motor_encoder(BP.PORT_D, BP.get_motor_encoder(BP.PORT_D)) # reset encoder D
+        BP.offset_motor_encoder(BP.PORT_B, BP.get_motor_encoder(BP.PORT_B)) # reset encoder A
+        BP.offset_motor_encoder(BP.PORT_C, BP.get_motor_encoder(BP.PORT_C)) # reset encoder D
     except IOError as error:
         print(error)
     
-    BP.set_motor_power(BP.PORT_D, BP.MOTOR_FLOAT)    # float motor D
-    BP.set_motor_limits(BP.PORT_A, 50, 200)          # optionally set a power limit (in percent) and a speed limit (in Degrees Per Second)
+    BP.set_motor_power(BP.PORT_C, BP.MOTOR_FLOAT)    # float Motor C
+    BP.set_motor_limits(BP.PORT_B, 50, 200)          # optionally set a power limit (in percent) and a speed limit (in Degrees Per Second)
     while True:
         # Each of the following BP.get_motor_encoder functions returns the encoder value.
         try:
-            target = BP.get_motor_encoder(BP.PORT_D) # read motor D's position
+            target = BP.get_motor_encoder(BP.PORT_C) # read Motor C's position
         except IOError as error:
             print(error)
         
-        BP.set_motor_position(BP.PORT_A, target)    # set motor A's target position to the current position of motor D
+        BP.set_motor_position(BP.PORT_B, target)    # set Motor B's target position to the current position of Motor C
         
         try:
-            print("Motor A target: %6d  Motor A position: %6d" % (target, BP.get_motor_encoder(BP.PORT_A)))
+            print("Motor B target: %6d  Motor B position: %6d" % (target, BP.get_motor_encoder(BP.PORT_B)))
         except IOError as error:
             print(error)
         
-        print("Motor A Status: ", BP.get_motor_status(BP.PORT_A))
+        print("Motor B Status: ", BP.get_motor_status(BP.PORT_B))
         
         time.sleep(0.02)  # delay for 0.02 seconds (20ms) to reduce the Raspberry Pi CPU load.
 

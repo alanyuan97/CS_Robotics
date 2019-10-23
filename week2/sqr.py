@@ -12,8 +12,8 @@ BP = brickpi3.BrickPi3() # Create an instance of the BrickPi3 class. BP will be 
 M_RIGHT = BP.PORT_B
 M_LEFT = BP.PORT_C
 dps = 300
-STRAIGHT_VALUE = 1080 # set this value 
-TURN_VALUE = 210 # set this value
+STRAIGHT_VALUE = 1080 #  set this value 
+TURN_VALUE = 220 #  set this value
 try:
     try:
         BP.offset_motor_encoder(BP.PORT_B, BP.get_motor_encoder(BP.PORT_B)) # reset encoder B
@@ -22,7 +22,6 @@ try:
         print(error)
         raise
     for index in range(0,4):
-    
         BP.set_motor_dps(M_RIGHT,dps)
         BP.set_motor_dps(M_LEFT,dps)
 

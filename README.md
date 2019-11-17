@@ -20,24 +20,26 @@ It then should be followed by short phrase describe what this commit is about.
 
 ### Branch setup
 
-There will be three main branches
+There will be four type of branches
 
-* __master__ branch is for completed features
-* __dev/{week_num}__ branch is for development, but features should be done in branch named `dev/{week_num}/{task_name}` first, then merge back to `dev/{week_num}`
+* __master__ branch is for completed development
+* __dev/{week_num}__ branch is for completed features for {week_num} week
+* __fea/{week_num}/{task_name}__ branch is for incompleted feature for {week_num} week
 * __tool__ branch is for general productivity tools
 
 #### merge vs rebase
 
 For cases below __merge__ should be used via pull-request and code review:
 
-* `dev/{week_num}/{task_name}` to `dev/{week_num}`
-* `dev/{week_num}`  to `master` 
+* `fea/{week_num}/{task_name}` to `dev/{week_num}`
+* `dev/{week_num}`  to `master`, and at least one approval from another team member
 * `tool` to `master`
 
 For cases below __rebase__ should be used, to make history clear to read:
 
 * pull from `master` to `dev/{week_num}`
-* pull from `dev/{week_num}` to `dev/{week_num}/{task_name}`
+* pull from `dev/{week_num}` to `fea/{week_num}/{task_name}`
+* When pull from remote, use `git pull --rebase`
 
 ### User management
 

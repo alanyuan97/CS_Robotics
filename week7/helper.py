@@ -19,8 +19,12 @@ Unit of measurement
 3. Prameter proportional to angle or distance need to be normalised
 """
 
-max_sonar_distance = 150                 # max reliable measuring distance for sonar
-min_sonar_angle_cos = cos(30 *pi/180)   # cutoff angle for sonar
+# characteristics for sonar sensor
+max_sonar_distance = 150    # max reliable measuring distance for sonar (in cm)
+min_sonar_angle_cos = cos(30 *pi/180)    # cos of cutoff angle for sonar
+sonar_var = 3*3    #sonar gaussian likelihood variance
+sonar_K = 0.01    # sonar gaussian likelihood offset value
+
 
 class RobotBase(brickpi3.BrickPi3):
     def __init__(self, M_LEFT, M_RIGHT, M_SONAR, S_SONAR, map, p_start=(0.0,0.0,0.0),*, p_count=200, gaussian_e=(0,0.03), gaussian_f=(0, 0.002/180*pi), gaussian_g=(0,0.01/180*pi), debug_canvas=None):
@@ -80,8 +84,11 @@ class RobotBase(brickpi3.BrickPi3):
 
 
 
-    def get_est_pos(self):
+    def get_pos_mean(self):
         return np.average(self.p_tuples, axis=0, weights=self.p_weights)
+
+    def get_pos_var(self):
+        return np.var(self.p_tuples, axis=0)
 
 
 
@@ -92,7 +99,7 @@ class RobotBase(brickpi3.BrickPi3):
         # TODO: use turntable
 
         # config
-        max_invalid_rate = 0.9
+        max_invalid_rate = 0.4
 
 
         if sonar_v:
@@ -179,7 +186,7 @@ class RobotBase(brickpi3.BrickPi3):
 
         # get estimation of current location
         while True:
-            est_x, est_y, est_t = self.get_est_pos()
+            est_x, est_y, est_t = self.get_pos_mean()
             est_t = normalise_anlge(est_t)
             logging.debug(f"at ({est_x},{est_y}, to ({x},{y})")
 
@@ -204,6 +211,7 @@ class RobotBase(brickpi3.BrickPi3):
 
             # perform movement and calibrate
             self.to_relative_turn(relative_t)
+            logging.warning(f"Before calibration get var {self.get_pos_var()}")
             for _ in range(3):
                 self.sonar_calibrate()
                 if self.debug_canvas:
@@ -216,6 +224,9 @@ class RobotBase(brickpi3.BrickPi3):
                 if self.debug_canvas:
                     self.debug_canvas.drawParticles(self.p_tuples, self.p_weights)
                     time.sleep(0.5)
+
+            logging.warning(f"After calibration get var {self.get_pos_var()}")
+
 
             # TODO: use turntable to seek alternative measurement
 
@@ -343,10 +354,6 @@ class Map:
         # allow custom function to check if location is inside map
         if not self.inside_map(x,y):
             return 0
-
-        # config
-        sonar_var = 3*3             # variance of sonar
-        sonar_K = 0.01                 # offset value for sonar
 
         min_m = None
 

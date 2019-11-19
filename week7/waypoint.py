@@ -36,11 +36,11 @@ robot = RobotBase(BrickPi3.PORT_B, BrickPi3.PORT_C,BrickPi3.PORT_D, BrickPi3.POR
 waypoints = [(84.0,30),(180,30), (180,54), (138,54), (138,168), (114,168), (114,84), (84,84), (84,30)]
 
 canvas.drawParticles(robot.p_tuples, robot.p_weights)
-print(f"location {robot.get_est_pos()}")
+print(f"location {robot.get_pos_mean()}")
 sleep(1)
 
 for i, waypoint in enumerate(waypoints):
     robot.to_waypoint(*waypoint)
     canvas.drawParticles(robot.p_tuples, robot.p_weights)
-    print(f"location {robot.get_est_pos()}")
+    print(f"location {robot.get_pos_mean()}")
     print(f"#################finish way point {i+1}#####################")

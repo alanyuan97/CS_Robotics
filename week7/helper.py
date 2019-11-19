@@ -236,7 +236,7 @@ class RobotBase(brickpi3.BrickPi3):
             _x, _y, _t = self.p_tuples[i]
             self.p_tuples[i] = (_x + cos(_t)*inc_distance[i],
                                 _y + sin(_t)*inc_distance[i],
-                                _t + err_f[i])
+                                normalise_anlge( _t + err_f[i]))
 
 
     def to_relative_turn(self, angle):
@@ -262,7 +262,7 @@ class RobotBase(brickpi3.BrickPi3):
             _x, _y, _t = self.p_tuples[i]
             self.p_tuples[i] = (_x ,
                                 _y ,
-                                _t + angle+ err_g[i])
+                                normalise_anlge(_t + angle+ err_g[i]))
 
 def normalise_anlge(theta):
     t = theta % (2*pi) #modulus will have the same sign as the denominator

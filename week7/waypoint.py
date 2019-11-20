@@ -44,17 +44,17 @@ sleep(1)
 
 for cal in calpoints:
     robot.to_waypoint(*cal, accuracy=10)
-    canvas.drawParticles(robot.p_tuples, robot.p_weights)
+    canvas.drawParticles(robot.p_tuples, robot.p_weights, robot.get_pos_mean())
     sleep(1)
     while robot.get_pos_var()[1] > 5:
         robot.sonar_calibrate(-0.5*pi)
-    canvas.drawParticles(robot.p_tuples, robot.p_weights)
+    canvas.drawParticles(robot.p_tuples, robot.p_weights, robot.get_pos_mean())
     sleep(1)
 
 for i, waypoint in enumerate(waypoints):
     robot.to_waypoint(*waypoint)
     sleep(2)
 
-    canvas.drawParticles(robot.p_tuples, robot.p_weights)
+    canvas.drawParticles(robot.p_tuples, robot.p_weights, robot.get_pos_mean())
     print(f"location {robot.get_pos_mean()}")
     print(f"#################finish way point {i+1}#####################")

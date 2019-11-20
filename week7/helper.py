@@ -22,11 +22,11 @@ Unit of measurement
 # characteristics for sonar sensor
 max_sonar_distance = 150    # max reliable measuring distance for sonar (in cm)
 min_sonar_angle_cos = cos(30 *pi/180)    # cos of cutoff angle for sonar
-sonar_var = 3*3    #sonar gaussian likelihood variance
+sonar_var = 3**2    #sonar gaussian likelihood variance
 sonar_K = 0.01    # sonar gaussian likelihood offset value
 
 class RobotBase(brickpi3.BrickPi3):
-    def __init__(self, M_LEFT, M_RIGHT, M_SONAR, S_SONAR, map, p_start=(0.0,0.0,0.0),*, p_count=200, gaussian_e=(0,0.03), gaussian_f=(0, 0.002/180*pi), gaussian_g=(0,0.01/180*pi), debug_canvas=None):
+    def __init__(self, M_LEFT, M_RIGHT, M_SONAR, S_SONAR, map, p_start=(0.0,0.0,0.0),*, p_count=200, gaussian_e=(0,0.03), gaussian_f=(0, 0.002/180*pi), gaussian_g=(0,0.5/180*pi), debug_canvas=None):
         # BP init
         super(RobotBase, self).__init__()
         self.M_LEFT = M_LEFT
@@ -55,14 +55,16 @@ class RobotBase(brickpi3.BrickPi3):
         self.map = map
 
         # NOTE: p_weights and p_tuples need have same order
-        placement_error = 20/180*pi
+        placement_error_t = 20/180*pi
+        placement_error_xy = 0.1
         self.p_count = p_count
-        t_errors = np.random.normal(0, placement_error**2,  self.p_count)
+        t_errors = np.random.normal(0, placement_error_t**2,  self.p_count)
+        xy_errors = np.random.normal(0, placement_error_xy**2,  size=(self.p_count,2))
         self.p_weights = [1.0/p_count] * p_count
 
         temp = []
-        for e in t_errors:
-            temp.append( (p_start[0], p_start[1], p_start[2]+e) )
+        for (x,y), t in zip(xy_errors, t_errors):
+            temp.append( (p_start[0]+x, p_start[1]+y, p_start[2]+t) )
         self.p_tuples = temp
 
 
@@ -231,7 +233,7 @@ class RobotBase(brickpi3.BrickPi3):
 
             self.sonar_calibrate()
             if self.debug_canvas:
-                self.debug_canvas.drawParticles(self.p_tuples, self.p_weights)
+                self.debug_canvas.drawParticles(self.p_tuples, self.p_weights, self.get_pos_mean())
                 time.sleep(0.5)
 
             logging.warning(f"After calibration get var {self.get_pos_var()}")
@@ -309,6 +311,13 @@ class Canvas:
         self.margin      = 0.05*map_size;
         self.scale       = self.canvas_size/(map_size+2*self.margin);
 
+        self.bearing_c = (240,190)
+        self.bearing_r = 30
+
+        _x, _y = self.bearing_c
+        self.drawLine((_x-self.bearing_r,_y,_x+self.bearing_r,_y))
+        self.drawLine((_x,_y-self.bearing_r,_x,_y+self.bearing_r))
+
     def drawLines(self, lines):
         for line in lines:
             self.drawLine(line)
@@ -325,13 +334,22 @@ class Canvas:
         y2 = self.__screenY(line[3])
         print ("drawLine:" + str((x1,y1,x2,y2)))
 
-    def drawParticles(self,tuples, weights=None):
+    def drawParticles(self,tuples, weights=None, show_est=None):
         plot_dp = 2
         if weights:
             display = [(self.__screenX(t[0]),self.__screenY(t[1])) + (round(t[2],plot_dp),) + (weights[i],)  for i, t in enumerate(tuples)]
         else:
             # without weights
             display = [(self.__screenX(t[0]),self.__screenY(t[1])) + (round(t[2],plot_dp),) for t in tuples]
+
+        if show_est:
+            _x, _y, _t = show_est
+            x,y = self.bearing_c
+            # dot for est center
+            display.append( (self.__screenX(_x),self.__screenY(_y)) + (round(_t,plot_dp),) + (100,) )
+            # dot for direction
+            display.append( (self.__screenX(x + cos(_t)*self.bearing_r),self.__screenY(y + sin(_t)*self.bearing_r)) + (round(_t,plot_dp),) + (100,) )
+
         print ("drawParticles:" + str(display))
 
     def __screenX(self,x):

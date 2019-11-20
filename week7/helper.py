@@ -25,30 +25,31 @@ min_sonar_angle_cos = cos(30 *pi/180)    # cos of cutoff angle for sonar
 sonar_var = 3*3    #sonar gaussian likelihood variance
 sonar_K = 0.01    # sonar gaussian likelihood offset value
 
-
 class RobotBase(brickpi3.BrickPi3):
     def __init__(self, M_LEFT, M_RIGHT, M_SONAR, S_SONAR, map, p_start=(0.0,0.0,0.0),*, p_count=200, gaussian_e=(0,0.03), gaussian_f=(0, 0.002/180*pi), gaussian_g=(0,0.01/180*pi), debug_canvas=None):
         # BP init
         super(RobotBase, self).__init__()
         self.M_LEFT = M_LEFT
         self.M_RIGHT = M_RIGHT
-
         self.M_SONAR = M_SONAR
         self.S_SONAR = S_SONAR
+
         self.set_sensor_type(self.S_SONAR, self.SENSOR_TYPE.NXT_ULTRASONIC)
 
+        self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(M_LEFT))
+        self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(M_RIGHT))
+        self.offset_motor_encoder(self.M_SONAR, self.get_motor_encoder(M_SONAR))
 
         # characteristics for robot turning
         self.stright_dps = 500
         #self.stright_dpcm = (7870/280 + 5949/210)/2 # degree of motor rotation to move 1 cm
         self.stright_dpcm = 28
         self.turn_dps = 100
-        self.turn_dpradian = 4252.0/5/2/pi # degree of motor rotation to trun 1 radian
+        self.turn_dpradian = 4250.0/5/2/pi # degree of motor rotation to trun 1 radian
 
         #TODO: characteristics for turntable
-        self.turntable_ratio = None
-        # self.set_motor_limits(self.M_SONAR, dps=100)
-
+        # self.sonar_epd = - 1260.0/180 # truntable (encoder) rotation per rotation, NOTE:the negative to make direction consistant
+        self.sonar_epr = - 1260 / pi
 
         # localisation init
         self.map = map
@@ -82,43 +83,67 @@ class RobotBase(brickpi3.BrickPi3):
         self.reset_all()
         time.sleep(1)
 
+    
+    def get_sonar_dis(self,rad=None):
 
+        # go to position and measure
+        if rad is not None:
+            self.set_sonar_rad(rad, blocking=True)
+            
 
+        while True:
+            try:
+                sonar_distance = self.get_sensor(self.S_SONAR)
+                break
+            except:
+                logging.warning("invalid sonar data")
+                time.sleep(0.5)
+
+        return (self.get_sonar_rad(), sonar_distance)
+            
+
+    def get_sonar_rad(self):
+        return self.get_motor_encoder(self.M_SONAR)/self.sonar_epr
+
+    def set_sonar_rad(self, rad, blocking=False):
+        encoder_target = int( normalise_anlge(rad) * self.sonar_epr)
+        self.set_motor_position(self.M_SONAR, encoder_target)
+
+        if blocking:
+            while abs(self.get_motor_encoder(self.M_SONAR) - encoder_target) > 2:
+                pass
+            self.set_motor_dps(self.M_SONAR, 0)
+
+        return
+
+        
     def get_pos_mean(self):
-        return np.average(self.p_tuples, axis=0, weights=self.p_weights)
+        tr = np.array(self.p_tuples).transpose()
+
+        return (tr[0].mean(), tr[1].mean(), atan2( np.sin(tr[2]).mean(), np.cos(tr[2]).mean() ) )
 
     def get_pos_var(self):
         return np.var(self.p_tuples, axis=0)
 
 
 
-    def sonar_calibrate(self, sonar_v=None):
+    def sonar_calibrate(self, relative_rad=0.0):
         """
         Return True when sucessful, False otherwise
         """
         # TODO: use turntable
 
         # config
-        max_invalid_rate = 0.4
+        max_invalid_rate = 0.9
 
-
-        if sonar_v:
-            logging.warning("Hard code sonar reading!")
-            sonar_distance = sonar_v
-        else:
-            time.sleep(0.1)
-            try:
-                sonar_distance = self.get_sensor(self.S_SONAR)
-            except:
-                logging.warning("invalid sonar data")
-                return False
-
+        # get sonar_distance
+        sonar_rad, sonar_distance = self.get_sonar_dis(relative_rad)
+            
 
         # discard this reading if is outof the reliable range
         if sonar_distance>max_sonar_distance:
             logging.warning(f"Sonar get distance {sonar_distance}, exceed {max_sonar_distance} limit")
             return False
-
 
         # making cumulative weight table
         weight_table = [0] * self.p_count
@@ -128,9 +153,11 @@ class RobotBase(brickpi3.BrickPi3):
 
         for i, p in enumerate(self.p_tuples):
             _x, _y, _t = p
+            _t += sonar_rad
+            
             _w = self.p_weights[i]
 
-            w = self.map.calculate_likelihood(*p, sonar_distance)
+            w = self.map.calculate_likelihood(_x, _y, _t, sonar_distance)
 
             if w is None:
                 invalid_read += 1
@@ -140,18 +167,10 @@ class RobotBase(brickpi3.BrickPi3):
 
             debug_w.append(w)
 
-        # DEBUG
-        if sonar_v:
-            logging.warning("Debug likelihood")
-            self.debug_canvas.drawParticles(self.p_tuples, debug_w)
-            time.sleep(1)
-
-
-
-
         # check if there are too many invalid read
         if invalid_read/self.p_count > max_invalid_rate:
             logging.warning(f"Too much invalid particles, get{invalid_read}")
+            time.sleep(2)
             return False
 
         if invalid_read:
@@ -168,27 +187,20 @@ class RobotBase(brickpi3.BrickPi3):
         self.p_tuples = temp
         self.p_weights = [1/self.p_count] * self.p_count
 
-        # DEBUG
-        if sonar_v:
-            logging.warning("Debug likelihood normalisation")
-            self.debug_canvas.drawParticles(self.p_tuples, self.p_weights)
-            time.sleep(1)
-
         return True
 
 
 
 
-    def to_waypoint(self, x, y):
+
+    def to_waypoint(self, x, y, accuracy=3):
         # config
-        movement_accuracy = 1.5 # unit in cm
         max_forward = 20
 
         # get estimation of current location
         while True:
             est_x, est_y, est_t = self.get_pos_mean()
-            est_t = normalise_anlge(est_t)
-            logging.debug(f"at ({est_x},{est_y}, to ({x},{y})")
+            logging.warning(f"at ({est_x},{est_y},{est_t}) to ({x},{y})")
 
 
             # calculate movement, abort it needed
@@ -204,26 +216,23 @@ class RobotBase(brickpi3.BrickPi3):
             if relative_d > max_forward:
                 relative_d = max_forward
 
+            logging.warning((relative_t, relative_d))
             # exit
-            if relative_d < movement_accuracy:
-                logging.info(f"dis to waypoint: {relative_d}, require {movement_accuracy}")
+            if relative_d < accuracy:
+                logging.info(f"dis to waypoint: {relative_d}, require {accuracy}")
                 return
 
             # perform movement and calibrate
             self.to_relative_turn(relative_t)
-            logging.warning(f"Before calibration get var {self.get_pos_var()}")
-            for _ in range(3):
-                self.sonar_calibrate()
-                if self.debug_canvas:
-                    self.debug_canvas.drawParticles(self.p_tuples, self.p_weights)
-                    time.sleep(0.5)
+            self.sonar_calibrate()
+
 
             self.to_relative_forward(relative_d)
-            for _ in range(3):
-                self.sonar_calibrate()
-                if self.debug_canvas:
-                    self.debug_canvas.drawParticles(self.p_tuples, self.p_weights)
-                    time.sleep(0.5)
+
+            self.sonar_calibrate()
+            if self.debug_canvas:
+                self.debug_canvas.drawParticles(self.p_tuples, self.p_weights)
+                time.sleep(0.5)
 
             logging.warning(f"After calibration get var {self.get_pos_var()}")
 
@@ -232,14 +241,6 @@ class RobotBase(brickpi3.BrickPi3):
 
 
     def to_relative_forward(self, distance):
-        # perform movement
-        self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
-        self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
-        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, self.stright_dps )
-        while (self.get_motor_encoder(self.M_RIGHT) < self.stright_dpcm*distance):
-            pass
-        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
-
         # update model
         inc_distance = np.random.normal(*np.array(self.gaussian_e)*abs(distance), self.p_count) + distance
         err_f = np.random.normal(*np.array(self.gaussian_f)*distance, self.p_count)
@@ -249,8 +250,25 @@ class RobotBase(brickpi3.BrickPi3):
                                 _y + sin(_t)*inc_distance[i],
                                 normalise_anlge( _t + err_f[i]))
 
+        # perform movement
+        self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
+        self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, self.stright_dps )
+        while (self.get_motor_encoder(self.M_RIGHT) < self.stright_dpcm*distance):
+            pass
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
+
+
 
     def to_relative_turn(self, angle):
+        # update model
+        err_g = np.random.normal(*np.array(self.gaussian_g)*abs(angle), self.p_count)
+        for i in range(len(self.p_tuples)):
+            _x, _y, _t = self.p_tuples[i]
+            self.p_tuples[i] = (_x ,
+                                _y ,
+                                normalise_anlge(_t + angle+ err_g[i]))
+
         # perform movement
         self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT)) # reset encoder B
         self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT)) # reset encoder C
@@ -266,14 +284,6 @@ class RobotBase(brickpi3.BrickPi3):
             while (self.get_motor_encoder(self.M_RIGHT) > angle*self.turn_dpradian):
                 pass
         self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
-
-        # update model
-        err_g = np.random.normal(*np.array(self.gaussian_g)*abs(angle), self.p_count)
-        for i in range(len(self.p_tuples)):
-            _x, _y, _t = self.p_tuples[i]
-            self.p_tuples[i] = (_x ,
-                                _y ,
-                                normalise_anlge(_t + angle+ err_g[i]))
 
 def normalise_anlge(theta):
     t = theta % (2*pi) #modulus will have the same sign as the denominator
@@ -302,6 +312,11 @@ class Canvas:
     def drawLines(self, lines):
         for line in lines:
             self.drawLine(line)
+
+    def drawPoints(self, points):
+        for (x,y) in points:
+            self.drawLine((x-1,y-1,x+1,y+1))
+            self.drawLine((x-1,y+1,x+1,y-1))
 
     def drawLine(self,line):
         x1 = self.__screenX(line[0])

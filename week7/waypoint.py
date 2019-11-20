@@ -33,14 +33,28 @@ name_list = ["a","b","c","d","e","f","g","h"]
 
 # to waypoint
 robot = RobotBase(BrickPi3.PORT_B, BrickPi3.PORT_C,BrickPi3.PORT_D, BrickPi3.PORT_4, mymap, p_start=(84.0,30.0,0), debug_canvas=canvas)
-waypoints = [(84.0,30),(180,30), (180,54), (138,54), (138,168), (114,168), (114,84), (84,84), (84,30)]
+waypoints = [(180,30), (180,54), (138,54), (138,168), (114,168), (114,84), (84,84), (84,30)]
+calpoints = [(100,30),(120,30),(140,30),(160,30)]
+
+canvas.drawPoints(waypoints)
 
 canvas.drawParticles(robot.p_tuples, robot.p_weights)
 print(f"location {robot.get_pos_mean()}")
 sleep(1)
 
+for cal in calpoints:
+    robot.to_waypoint(*cal, accuracy=10)
+    canvas.drawParticles(robot.p_tuples, robot.p_weights)
+    sleep(1)
+    while robot.get_pos_var()[1] > 5:
+        robot.sonar_calibrate(-0.5*pi)
+    canvas.drawParticles(robot.p_tuples, robot.p_weights)
+    sleep(1)
+
 for i, waypoint in enumerate(waypoints):
     robot.to_waypoint(*waypoint)
+    sleep(2)
+
     canvas.drawParticles(robot.p_tuples, robot.p_weights)
     print(f"location {robot.get_pos_mean()}")
     print(f"#################finish way point {i+1}#####################")

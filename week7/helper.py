@@ -35,7 +35,13 @@ class RobotBase(brickpi3.BrickPi3):
         self.M_SONAR = M_SONAR
         self.S_SONAR = S_SONAR
 
+        self.S_TOUCH_RIGHT = self.PORT_1
+        self.S_TOUCH_LEFT = self.PORT_2
+
+
         self.set_sensor_type(self.S_SONAR, self.SENSOR_TYPE.NXT_ULTRASONIC)
+        self.set_sensor_type(self.S_TOUCH_RIGHT, self.SENSOR_TYPE.NXT_TOUCH)
+        self.set_sensor_type(self.S_TOUCH_LEFT, self.SENSOR_TYPE.NXT_TOUCH)
 
         self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(M_LEFT))
         self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(M_RIGHT))
@@ -241,9 +247,6 @@ class RobotBase(brickpi3.BrickPi3):
         return True
 
 
-
-
-
     def to_waypoint(self, x, y, accuracy=3):
         # config
         max_forward = 20
@@ -289,6 +292,38 @@ class RobotBase(brickpi3.BrickPi3):
 
 
             # TODO: use turntable to seek alternative measurement
+
+    def touch_bottle(self, push_dps = 100):
+        # reset encoder
+        self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
+        self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
+
+        # move farward until touch sensor get touched
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, push_dps)
+        while(  not (self.get_sensor(self.S_TOUCH_LEFT) or self.get_sensor(self.S_TOUCH_RIGHT)) ):
+            pass
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
+
+        # record how much it moved
+        dis_moved_r = self.get_motor_encoder(self.M_RIGHT)
+        dis_moved_l = self.get_motor_encoder(self.M_LEFT)
+        max_dis = min(dis_moved_r, dis_moved_l)
+
+        # move backward
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, - self.stright_dps)
+        while (self.get_motor_encoder(self.M_LEFT)>=0 or self.get_motor_encoder(self.M_RIGHT)>=0):
+            pass
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
+        logging.info("moved r{dis_moved_r}, l{dis_moved_l}")
+
+        # spread particles
+        err_e = np.random.normal(*np.array(self.gaussian_e)*abs(max_dis*2), self.p_count)
+        err_f = np.random.normal(*np.array(self.gaussian_f)*max_dis*2, self.p_count)
+        for i in range(len(self.p_tuples)):
+            _x, _y, _t = self.p_tuples[i]
+            self.p_tuples[i] = (_x + cos(_t)*err_e[i],
+                                _y + sin(_t)*err_e[i],
+                                normalise_anlge( _t + err_f[i]))
 
 
     def to_relative_forward(self, distance):

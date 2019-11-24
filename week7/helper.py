@@ -2,10 +2,11 @@
 
 import brickpi3
 import numpy as np
-from math import cos, sin, atan2, pi, sqrt, exp
+from math import cos, sin, atan2, pi, sqrt, exp,radians,degrees
 import time
 from bisect import bisect_left
 import logging
+import matplotlib.pyplot as plt
 
 """
 Direction defintion
@@ -85,13 +86,11 @@ class RobotBase(brickpi3.BrickPi3):
         self.reset_all()
         time.sleep(1)
 
-    
-    def get_sonar_dis(self,rad=None):
+    def get_sonar_dis(self,relative_rad=None):
 
         # go to position and measure
-        if rad is not None:
-            self.set_sonar_rad(rad, blocking=True)
-            
+        if relative_rad is not None:
+            self.set_sonar_rad(relative_rad, blocking=True)
 
         while True:
             try:
@@ -102,13 +101,12 @@ class RobotBase(brickpi3.BrickPi3):
                 time.sleep(0.5)
 
         return (self.get_sonar_rad(), sonar_distance)
-            
 
     def get_sonar_rad(self):
         return self.get_motor_encoder(self.M_SONAR)/self.sonar_epr
 
     def set_sonar_rad(self, rad, blocking=False):
-        encoder_target = int( normalise_anlge(rad) * self.sonar_epr)
+        encoder_target = int( rad * self.sonar_epr)
         self.set_motor_position(self.M_SONAR, encoder_target)
 
         if blocking:
@@ -118,7 +116,58 @@ class RobotBase(brickpi3.BrickPi3):
 
         return
 
-        
+    def get_nearest_obstacles(self,relative_start,relative_end,step,varthrs, DEBUG = False): # Return List ofBanana shape angle, parameters should be in radians
+        """
+        From sonar scan, find all banana shaped obstacles and return its center point and distance
+        With respect to robot
+        Return a list of (relative_rad, distance) of a obsticle
+        """
+
+        # Get reading
+        read_dis = []
+        read_rad = []
+        for r in np.arange(relative_start, relative_end, step):
+            rad, dis = self.get_sonar_dis(r)
+            read_rad.append(rad)
+            read_dis.append(dis)
+        time.sleep(0.5)
+        self.set_sonar_rad(0)
+        # Start data processing
+        result = []
+        start = True
+        # Find mid points of all banana shapes
+        for i in range(2,len(read_rad)-3):
+            if read_dis[i-2] == 255:
+                continue
+            _var = np.var(read_dis[i-2:i+3])
+            if _var==0 and start:
+                start_index = i
+                start = False
+            elif _var >= varthrs and not start:
+                end_index= i-1
+                start = True
+                if (end_index - start_index)>10:
+                    _rad = read_rad[int((start_index + end_index)/2)]
+                    _dis = read_dis[int((start_index + end_index)/2)]
+                    # min_idx = np.argmin(read_dis[start_index:end_index+1])
+                    # _rad = read_rad[start_index+min_idx]
+                    # _dis = min(read_dis[start_index:end_index+1])
+                    result.append( (_rad, _dis) )
+            else:
+                pass
+
+        if DEBUG:
+            fig = plt.figure()
+            ax = plt.subplot(111)
+            ax.scatter(np.array(read_rad)*180/pi,read_dis,alpha=0.5, marker='x', c='blue', s=10)
+            if result:
+                rads, dises = np.array(result).transpose()
+                ax.scatter(rads*180/pi,dises, marker='o',c='black', s=40)
+            plt.grid(linewidth = 0.2)
+            plt.savefig('scan.png')
+
+        return result
+      
     def get_pos_mean(self):
         tr = np.array(self.p_tuples).transpose()
 
@@ -140,7 +189,7 @@ class RobotBase(brickpi3.BrickPi3):
 
         # get sonar_distance
         sonar_rad, sonar_distance = self.get_sonar_dis(relative_rad)
-            
+
 
         # discard this reading if is outof the reliable range
         if sonar_distance>max_sonar_distance:
@@ -156,7 +205,7 @@ class RobotBase(brickpi3.BrickPi3):
         for i, p in enumerate(self.p_tuples):
             _x, _y, _t = p
             _t += sonar_rad
-            
+
             _w = self.p_weights[i]
 
             w = self.map.calculate_likelihood(_x, _y, _t, sonar_distance)
@@ -362,13 +411,18 @@ class Canvas:
 class Map:
     def __init__(self):
         self.walls = [];
+        self.wall_list = ["a","b","c","d","e","f","g","h"]
 
     def add_wall(self,wall):
         self.walls.append(wall);
 
     def clear(self):
-        self.walls = [];
+        self.walls = []
 
+    def get_wall(self,wallname):
+        idx = walllist.index(wallname)
+        return self.walls[idx]
+      
     def inside_map(self,x,y):
         if(x>=0 and x<=84 and y<=168 and y>=0): # section A on map
             return True
@@ -446,7 +500,7 @@ class Map:
                 index.append(i)
                 print(alldis)
         result = np.array(alldis)
-        return [result.min(),index[result.argmin()]]
+        return [result.min(),self.wall_list[index[result.argmin()]]]
 
     def check_within(self,x,y,theta,dis):
         for i in range(len(self.walls)):

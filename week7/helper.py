@@ -21,9 +21,9 @@ Unit of measurement
 """
 
 # characteristics for sonar sensor
-max_sonar_distance = 150    # max reliable measuring distance for sonar (in cm)
-min_sonar_angle_cos = cos(30 *pi/180)    # cos of cutoff angle for sonar
-sonar_var = 3**2    #sonar gaussian likelihood variance
+# max_sonar_distance = 150    # max reliable measuring distance for sonar (in cm)
+min_sonar_angle_cos = cos(20 *pi/180)    # cos of cutoff angle for sonar
+sonar_var = 9**2    #sonar gaussian likelihood variance
 sonar_K = 0.01    # sonar gaussian likelihood offset value
 
 class RobotBase(brickpi3.BrickPi3):
@@ -57,6 +57,8 @@ class RobotBase(brickpi3.BrickPi3):
         #TODO: characteristics for turntable
         # self.sonar_epd = - 1260.0/180 # truntable (encoder) rotation per rotation, NOTE:the negative to make direction consistant
         self.sonar_epr = - 1260 / pi
+        self.set_motor_position_kp(M_SONAR,60)
+        self.set_motor_position_kd(M_SONAR,75)
 
         # localisation init
         self.map = map
@@ -92,6 +94,7 @@ class RobotBase(brickpi3.BrickPi3):
         self.reset_all()
         time.sleep(1)
 
+
     def get_sonar_dis(self,relative_rad=None):
 
         # go to position and measure
@@ -106,7 +109,8 @@ class RobotBase(brickpi3.BrickPi3):
                 logging.warning("invalid sonar data")
                 time.sleep(0.5)
 
-        return (self.get_sonar_rad(), sonar_distance)
+        return (self.get_sonar_rad(), sonar_distance+3)
+
 
     def get_sonar_rad(self):
         return self.get_motor_encoder(self.M_SONAR)/self.sonar_epr
@@ -121,6 +125,7 @@ class RobotBase(brickpi3.BrickPi3):
             self.set_motor_dps(self.M_SONAR, 0)
 
         return
+
 
     def get_nearest_obstacles(self,relative_start,relative_end,step,varthrs, DEBUG = False): # Return List ofBanana shape angle, parameters should be in radians
         """
@@ -468,7 +473,7 @@ class Map:
         else:
             return False
 
-    def calculate_likelihood(self, x, y, t, z):
+    def calculate_likelihood(self, x, y, t, z, bottle_detection=False, *, debug_m = None):
         """
         Return 0 for impossible value, None for unable to decide
         """
@@ -486,13 +491,13 @@ class Map:
             # BUG: also check direction??????????
             ab_distance = sqrt( (a_y-b_y)**2 + (b_x-a_x)**2 )
             beta = (cos(t)*(a_y-b_y)+sin(t)*(b_x-a_x))/ab_distance
-            if beta < min_sonar_angle_cos:
+            if not bottle_detection and beta < min_sonar_angle_cos: # disable filter for bottle_detection
                 continue
 
             # find if distance is greater than possible to detect
             # BUG: also check direction?????????? (m<0)??
             m = ((b_y-a_y)*(a_x-x)-(b_x-a_x)*(a_y-y)) / ((b_y-a_y)*cos(t)-(b_x-a_x)*sin(t))
-            if m > max_sonar_distance or m<0:
+            if m<0:
                 continue
 
             # check if sonar is hit between endpoint
@@ -507,14 +512,33 @@ class Map:
             if min_m is None or m<min_m:
                 min_m = m
 
-        # find min_m for the most likely wall, cal likelihood
+        if debug_m is not None:
+            debug_m.append(min_m)
+
+        # found min_m for the most likely wall, cal likelihood
         # assume gaussian distribution
+        wall_likelihood = None
         if min_m:
-            return exp( - (z-m)**2 / (2*sonar_var) ) + sonar_K
+            wall_likelihood = exp( - (z-m)**2 / (2*sonar_var) ) + sonar_K
+
+
+
+        # return value are tuple depends on input
+        if bottle_detection:
+
+            if min_m is None:
+                # TODO: handel when min_m is None, NOTE: min_sonar_angle_cos has been disabled
+                bottle_likelihood = None
+            elif z+20<min_m:
+                # very likely, within 20 cm bound
+                bottle_likelihood = 1 + sonar_K # 1 comes from exp(0)
+            else:
+                bottle_likelihood = exp( - (m-20-z)**2 / (2*sonar_var) ) + sonar_K
+
+            return (wall_likelihood, bottle_likelihood)
+
         else:
-            return None
-
-
+            return wall_likelihood
 
 
     def findwall(self,x,y,theta,dummy):

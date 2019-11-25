@@ -4,7 +4,7 @@ from brickpi3 import BrickPi3
 
 from helper import RobotBase, Canvas, Map
 from time import sleep
-from math import pi,degrees
+from math import pi,degrees,radians
 
 canvas = Canvas(210)
 mymap = Map()
@@ -41,6 +41,7 @@ calpoints = [(100,30),(120,30),(140,30),(160,30)]
 # canvas.drawParticles(robot.p_tuples, robot.p_weights)
 # print(f"location {robot.get_pos_mean()}")
 # sleep(1)
-
-check_xy = robot.update_pos() # Turn on debug flag 
-print(check_xy)
+arg_dis = robot.get_nearest_obstacles(-pi,pi,radians(2),0.3,DEBUG = True)
+bottles,walls = robot.identify_bottle(arg_dis)
+x_update,y_update = robot.update_pos(walls) # Turn on debug flag 
+print(f"X_update: {x_update}, Y_update: {y_update}")

@@ -140,6 +140,7 @@ class RobotBase(brickpi3.BrickPi3):
             read_dis.append(dis)
         time.sleep(0.5)
         self.set_sonar_rad(0)
+        time.sleep(1)
         # Start data processing
         result = []
         start = True
@@ -181,7 +182,67 @@ class RobotBase(brickpi3.BrickPi3):
             plt.savefig('scan.png')
 
         return result
-      
+
+    def update_pos(self,walls):
+        y_update_amount=None
+        x_update_amount=None
+        # Estimate current position
+        x,y,theta = self.get_pos_mean()
+        #  Take the minimum distance which is likely to be a wall
+        for i, (_rad,_dis) in enumerate(walls):
+            # Find the wall using the map.findwall function
+            min_dis, min_wall = self.map.findwall(x,y,theta+_rad,dummy=None)
+            ax,ay,bx,by = self.map.get_wall(min_wall) #[ax,ay,bx,by]
+            # check if wall is horizontal/vertical
+            print(f"Min_wall: {min_wall}")
+            if (min_wall in ['h','f','d','b']):
+                _y = np.sign(y-ay)*(min_dis - abs(y-ay))
+                # if y-ay>= 0:
+                #     update_amount = min_dis-(y-ay)
+                # elif y-ay<0: # Wall higher than point
+                #     update_amount = (ay-y) - min_dis
+                if y_update_amount is None or abs(y_update_amount) > abs(_y): 
+                    y_update_amount = _y
+            elif (min_wall in ['g','e','c','a']):
+                _x = np.sign(x-ax)*(min_dis - abs(x-ax))
+
+                if x_update_amount is None or abs(x_update_amount) > abs(_x): 
+                    x_update_amount = _x
+
+            else:
+                print("No wall found")
+                pass
+        if (x_update_amount is None):
+            x_update_amount = 0
+        if (y_update_amount is None):
+            y_update_amount = 0
+        # Update particles
+        if x_update_amount is None and y_update_amount is None:
+            logging.warning(f"Update XY Failed")
+            return (x_update_amount,y_update_amount)
+        else:
+            for i in range(len(self.p_tuples)):
+                _x, _y, _t = self.p_tuples[i]
+                self.p_tuples[i] = (_x + x_update_amount,_y + y_update_amount,normalise_anlge(_t))
+        return (x_update_amount,y_update_amount)
+
+    def identify_bottle(self,arg_dis):
+        # return bottle/walls angels+distance
+        walls = []
+        bottles = []
+        x, y, theta = self.get_pos_mean()
+        for i,(_rad,_dis) in enumerate(arg_dis):
+            wall, bottle = self.map.calculate_likelihood(x,y,theta+_rad,_dis, True)
+            if wall is None:
+                continue
+
+            if (wall>bottle):
+                walls.append((_rad,_dis,))
+            else:
+                bottles.append((_rad,_dis,))
+
+        return (bottles, walls)
+
     def get_pos_mean(self):
         tr = np.array(self.p_tuples).transpose()
 
@@ -463,7 +524,7 @@ class Map:
         self.walls = []
 
     def get_wall(self,wallname):
-        idx = walllist.index(wallname)
+        idx = self.wall_list.index(wallname)
         return self.walls[idx]
       
     def inside_map(self,x,y):

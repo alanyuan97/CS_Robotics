@@ -94,7 +94,6 @@ class RobotBase(brickpi3.BrickPi3):
         self.reset_all()
         time.sleep(1)
 
-
     def get_sonar_dis(self,relative_rad=None):
 
         # go to position and measure
@@ -108,7 +107,6 @@ class RobotBase(brickpi3.BrickPi3):
             except:
                 logging.warning("invalid sonar data")
                 time.sleep(0.5)
-
         return (self.get_sonar_rad(), sonar_distance+3)
 
 
@@ -125,7 +123,6 @@ class RobotBase(brickpi3.BrickPi3):
             self.set_motor_dps(self.M_SONAR, 0)
 
         return
-
 
     def get_nearest_obstacles(self,relative_start,relative_end,step,varthrs, DEBUG = False): # Return List ofBanana shape angle, parameters should be in radians
         """
@@ -147,7 +144,7 @@ class RobotBase(brickpi3.BrickPi3):
         result = []
         start = True
         # Find mid points of all banana shapes
-        for i in range(2,len(read_rad)-3):
+        for i in range(2,len(read_rad)-2):
             if read_dis[i-2] == 255:
                 continue
             _var = np.var(read_dis[i-2:i+3])
@@ -163,6 +160,12 @@ class RobotBase(brickpi3.BrickPi3):
                     # min_idx = np.argmin(read_dis[start_index:end_index+1])
                     # _rad = read_rad[start_index+min_idx]
                     # _dis = min(read_dis[start_index:end_index+1])
+                    result.append( (_rad, _dis) )
+            elif i== len(read_rad)-3 and _var == 0:
+                end_index = i
+                if (end_index - start_index)>10:
+                    _rad = read_rad[int((start_index + end_index)/2)]
+                    _dis = read_dis[int((start_index + end_index)/2)]
                     result.append( (_rad, _dis) )
             else:
                 pass

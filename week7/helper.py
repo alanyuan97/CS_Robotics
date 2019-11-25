@@ -183,6 +183,7 @@ class RobotBase(brickpi3.BrickPi3):
 
         return result
 
+
     def update_pos(self,walls):
         y_update_amount=None
         x_update_amount=None
@@ -394,10 +395,38 @@ class RobotBase(brickpi3.BrickPi3):
                                 _y + sin(_t)*err_e[i],
                                 normalise_anlge( _t + err_f[i]))
 
-
     def to_relative_forward(self, distance):
+        """
+        This function will return True when hit obstacle
+        """
+        backoff_dis = 10
+
+        # perform movement
+        hit_obstacle = False
+        self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
+        self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, self.stright_dps )
+        while(self.get_motor_encoder(self.M_RIGHT) < self.stright_dpcm*distance):
+            if (self.get_sensor(self.S_TOUCH_LEFT) or self.get_sensor(self.S_TOUCH_RIGHT) ):
+                hit_obstacle = True
+                # early exit
+                break
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
+        farward_dis = self.get_motor_encoder(self.M_RIGHT)/self.stright_dpcm
+
+        # backoff if hit obstacle
+        if hit_obstacle:
+            self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
+            self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
+            self.set_motor_dps(self.M_RIGHT | self.M_LEFT, - self.stright_dps)
+            while (self.get_motor_encoder(self.M_RIGHT) >= -backoff_dis*self.stright_dpcm):
+                pass
+            self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
+
+
+
         # update model
-        inc_distance = np.random.normal(*np.array(self.gaussian_e)*abs(distance), self.p_count) + distance
+        inc_distance = np.random.normal(*np.array(self.gaussian_e)*abs(distance), self.p_count) + farward_dis - backoff_dis
         err_f = np.random.normal(*np.array(self.gaussian_f)*distance, self.p_count)
         for i in range(len(self.p_tuples)):
             _x, _y, _t = self.p_tuples[i]
@@ -405,14 +434,8 @@ class RobotBase(brickpi3.BrickPi3):
                                 _y + sin(_t)*inc_distance[i],
                                 normalise_anlge( _t + err_f[i]))
 
-        # perform movement
-        self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
-        self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
-        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, self.stright_dps )
-        while (self.get_motor_encoder(self.M_RIGHT) < self.stright_dpcm*distance):
-            pass
-        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
-
+        # TODO: increase of particle when hit obstacle
+        return hit_obstacle
 
 
     def to_relative_turn(self, angle):
@@ -526,7 +549,7 @@ class Map:
     def get_wall(self,wallname):
         idx = self.wall_list.index(wallname)
         return self.walls[idx]
-      
+
     def inside_map(self,x,y):
         if(x>=0 and x<=84 and y<=168 and y>=0): # section A on map
             return True

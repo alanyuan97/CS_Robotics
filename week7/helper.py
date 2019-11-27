@@ -21,13 +21,13 @@ Unit of measurement
 """
 
 # characteristics for sonar sensor
-# max_sonar_distance = 150    # max reliable measuring distance for sonar (in cm)
+max_sonar_distance = 150    # max reliable measuring distance for sonar (in cm)
 min_sonar_angle_cos = cos(20 *pi/180)    # cos of cutoff angle for sonar
 sonar_var = 9**2    #sonar gaussian likelihood variance
 sonar_K = 0.01    # sonar gaussian likelihood offset value
 
 class RobotBase(brickpi3.BrickPi3):
-    def __init__(self, M_LEFT, M_RIGHT, M_SONAR, S_SONAR, map, p_start=(0.0,0.0,0.0),*, p_count=200, gaussian_e=(0,0.03), gaussian_f=(0, 0.002/180*pi), gaussian_g=(0,0.5/180*pi), debug_canvas=None):
+    def __init__(self, M_LEFT, M_RIGHT, M_SONAR, S_SONAR, map, p_start=(0.0,0.0,0.0),*, p_count=100, gaussian_e=(0,0.001), gaussian_f=(0, 0.001/180*pi), gaussian_g=(0,0.01/180*pi), debug_canvas=None):
         # BP init
         super(RobotBase, self).__init__()
         self.M_LEFT = M_LEFT
@@ -49,8 +49,8 @@ class RobotBase(brickpi3.BrickPi3):
 
         # characteristics for robot turning
         self.stright_dps = 500
-        #self.stright_dpcm = (7870/280 + 5949/210)/2 # degree of motor rotation to move 1 cm
-        self.stright_dpcm = 28
+        self.stright_dpcm = (7870/280 + 5949/210)/2 # degree of motor rotation to move 1 cm
+        # self.stright_dpcm = 28
         self.turn_dps = 100
         self.turn_dpradian = 4250.0/5/2/pi # degree of motor rotation to trun 1 radian
 
@@ -64,8 +64,9 @@ class RobotBase(brickpi3.BrickPi3):
         self.map = map
 
         # NOTE: p_weights and p_tuples need have same order
-        placement_error_t = 20/180*pi
-        placement_error_xy = 0.1
+        placement_error_t = 2/180*pi
+        placement_error_xy = 1
+
         self.p_count = p_count
         t_errors = np.random.normal(0, placement_error_t**2,  self.p_count)
         xy_errors = np.random.normal(0, placement_error_xy**2,  size=(self.p_count,2))
@@ -82,6 +83,8 @@ class RobotBase(brickpi3.BrickPi3):
         self.gaussian_f = gaussian_f
         self.gaussian_g = gaussian_g
 
+        self.gaussian_push = (0, radians(2))
+
         # debug
         self.debug_canvas = debug_canvas
 
@@ -92,7 +95,7 @@ class RobotBase(brickpi3.BrickPi3):
     def __del__(self):
         #wait hardware to init
         self.reset_all()
-        time.sleep(1)
+        # time.sleep(1)
 
     def get_sonar_dis(self,relative_rad=None):
 
@@ -105,7 +108,6 @@ class RobotBase(brickpi3.BrickPi3):
                 sonar_distance = self.get_sensor(self.S_SONAR)
                 break
             except:
-                logging.warning("invalid sonar data")
                 time.sleep(0.5)
         return (self.get_sonar_rad(), sonar_distance+3)
 
@@ -124,7 +126,7 @@ class RobotBase(brickpi3.BrickPi3):
 
         return
 
-    def get_nearest_obstacles(self,relative_start,relative_end,step,varthrs, DEBUG = False): # Return List ofBanana shape angle, parameters should be in radians
+    def get_nearest_obstacles(self,relative_start,relative_end,step,varthrs=0.4, DEBUG = False): # Return List ofBanana shape angle, parameters should be in radians
         """
         From sonar scan, find all banana shaped obstacles and return its center point and distance
         With respect to robot
@@ -138,15 +140,13 @@ class RobotBase(brickpi3.BrickPi3):
             rad, dis = self.get_sonar_dis(r)
             read_rad.append(rad)
             read_dis.append(dis)
-        time.sleep(0.5)
-        self.set_sonar_rad(0)
-        time.sleep(1)
+
         # Start data processing
         result = []
         start = True
         # Find mid points of all banana shapes
         for i in range(2,len(read_rad)-2):
-            if read_dis[i-2] == 255:
+            if read_dis[i-2] >= 255:
                 continue
             _var = np.var(read_dis[i-2:i+3])
             if _var==0 and start:
@@ -155,18 +155,18 @@ class RobotBase(brickpi3.BrickPi3):
             elif _var >= varthrs and not start:
                 end_index= i-1
                 start = True
-                if (end_index - start_index)>10:
-                    _rad = read_rad[int((start_index + end_index)/2)]
-                    _dis = read_dis[int((start_index + end_index)/2)]
+                if (end_index - start_index)>5:
+                    _rad = read_rad[int((start_index + end_index)/2-1)]
+                    _dis = read_dis[int((start_index + end_index)/2-1)]
                     # min_idx = np.argmin(read_dis[start_index:end_index+1])
                     # _rad = read_rad[start_index+min_idx]
                     # _dis = min(read_dis[start_index:end_index+1])
                     result.append( (_rad, _dis) )
             elif i== len(read_rad)-3 and _var == 0:
                 end_index = i
-                if (end_index - start_index)>10:
-                    _rad = read_rad[int((start_index + end_index)/2)]
-                    _dis = read_dis[int((start_index + end_index)/2)]
+                if (end_index - start_index)>5:
+                    _rad = read_rad[int((start_index + end_index)/2-1)]
+                    _dis = read_dis[int((start_index + end_index)/2-1)]
                     result.append( (_rad, _dis) )
             else:
                 pass
@@ -181,66 +181,60 @@ class RobotBase(brickpi3.BrickPi3):
             plt.grid(linewidth = 0.2)
             plt.savefig('scan.png')
 
+        self.set_sonar_rad(-pi)
+
         return result
 
 
-    def update_pos(self,walls):
-        y_update_amount=None
-        x_update_amount=None
-        # Estimate current position
-        x,y,theta = self.get_pos_mean()
+    def update_pos(self,walls, walls_likely):
+        print(f"enter update pos with len{walls}, {walls_likely}")
+
         #  Take the minimum distance which is likely to be a wall
-        for i, (_rad,_dis) in enumerate(walls):
-            # Find the wall using the map.findwall function
-            min_dis, min_wall = self.map.findwall(x,y,theta+_rad,dummy=None)
-            ax,ay,bx,by = self.map.get_wall(min_wall) #[ax,ay,bx,by]
-            # check if wall is horizontal/vertical
-            print(f"Min_wall: {min_wall}")
-            if (min_wall in ['h','f','d','b']):
-                _y = np.sign(y-ay)*(min_dis - abs(y-ay))
-                # if y-ay>= 0:
-                #     update_amount = min_dis-(y-ay)
-                # elif y-ay<0: # Wall higher than point
-                #     update_amount = (ay-y) - min_dis
-                if y_update_amount is None or abs(y_update_amount) > abs(_y): 
-                    y_update_amount = _y
-            elif (min_wall in ['g','e','c','a']):
-                _x = np.sign(x-ax)*(min_dis - abs(x-ax))
+        for i, (b_likely, w_likely) in enumerate(walls_likely):
+            print(f"update pos rad:{walls[i][0]} d:{walls[i][1]} b:{b_likely} w:{walls_likely}")
+            if w_likely/b_likely < 100:
+                continue
 
-                if x_update_amount is None or abs(x_update_amount) > abs(_x): 
-                    x_update_amount = _x
 
-            else:
-                print("No wall found")
-                pass
-        if (x_update_amount is None):
-            x_update_amount = 0
-        if (y_update_amount is None):
-            y_update_amount = 0
-        # Update particles
-        if x_update_amount is None and y_update_amount is None:
-            logging.warning(f"Update XY Failed")
-            return (x_update_amount,y_update_amount)
-        else:
-            for i in range(len(self.p_tuples)):
-                _x, _y, _t = self.p_tuples[i]
-                self.p_tuples[i] = (_x + x_update_amount,_y + y_update_amount,normalise_anlge(_t))
-        return (x_update_amount,y_update_amount)
+            self.sonar_calibrate(inject_input=walls[i])
 
-    def identify_bottle(self,arg_dis):
+            if self.debug_canvas:
+                self.debug_canvas.drawParticles(self.p_tuples, self.p_weights, self.get_pos_mean())
+                time.sleep(1)
+
+
+
+    def identify_bottle(self,arg_dis,*, bottles_likely=None, walls_likely=None):
         # return bottle/walls angels+distance
         walls = []
         bottles = []
         x, y, theta = self.get_pos_mean()
         for i,(_rad,_dis) in enumerate(arg_dis):
-            wall, bottle = self.map.calculate_likelihood(x,y,theta+_rad,_dis, True)
-            if wall is None:
-                continue
 
-            if (wall>bottle):
-                walls.append((_rad,_dis,))
+            # caculate joint likelyhood for all tupes
+            wall_likely = 1
+            bottle_likely = 1
+
+            for (_x,_y,_t) in self.p_tuples:
+                _w, _b = self.map.calculate_likelihood(_x,_y,_t+_rad,_dis, True)
+                if _w is None:
+                    continue
+                wall_likely *=  _w
+                bottle_likely *= _b
+
+
+            print(f"b:{bottle_likely} w:{wall_likely}")
+            if (wall_likely == bottle_likely):
+                # can't determine what bottle is
+                pass
+            elif (wall_likely>bottle_likely):
+                walls.append((_rad,_dis))
+                if walls_likely is not None:
+                    walls_likely.append( (bottle_likely,wall_likely) )
             else:
-                bottles.append((_rad,_dis,))
+                bottles.append((_rad,_dis))
+                if bottles_likely is not None:
+                    bottles_likely.append( (bottle_likely,wall_likely) )
 
         return (bottles, walls)
 
@@ -254,7 +248,7 @@ class RobotBase(brickpi3.BrickPi3):
 
 
 
-    def sonar_calibrate(self, relative_rad=0.0):
+    def sonar_calibrate(self, relative_rad=0.0, *, inject_input = None):
         """
         Return True when sucessful, False otherwise
         """
@@ -264,7 +258,10 @@ class RobotBase(brickpi3.BrickPi3):
         max_invalid_rate = 0.9
 
         # get sonar_distance
-        sonar_rad, sonar_distance = self.get_sonar_dis(relative_rad)
+        if inject_input is None:
+            sonar_rad, sonar_distance = self.get_sonar_dis(relative_rad)
+        else:
+            sonar_rad, sonar_distance = inject_input
 
 
         # discard this reading if is outof the reliable range
@@ -297,7 +294,6 @@ class RobotBase(brickpi3.BrickPi3):
         # check if there are too many invalid read
         if invalid_read/self.p_count > max_invalid_rate:
             logging.warning(f"Too much invalid particles, get{invalid_read}")
-            time.sleep(2)
             return False
 
         if invalid_read:
@@ -318,52 +314,37 @@ class RobotBase(brickpi3.BrickPi3):
 
 
     def to_waypoint(self, x, y, accuracy=3):
-        # config
-        max_forward = 20
-
         # get estimation of current location
-        while True:
-            est_x, est_y, est_t = self.get_pos_mean()
-            logging.warning(f"at ({est_x},{est_y},{est_t}) to ({x},{y})")
+        est_x, est_y, est_t = self.get_pos_mean()
+        logging.warning(f"at ({est_x},{est_y},{est_t}) to ({x},{y})")
 
 
-            # calculate movement, abort it needed
-            diff_x = x - est_x
-            diff_y = y - est_y
-            target_t = atan2(diff_y, diff_x)
+        # calculate movement, abort it needed
+        diff_x = x - est_x
+        diff_y = y - est_y
+        target_t = atan2(diff_y, diff_x)
 
-            relative_t = target_t - est_t
-            relative_t = normalise_anlge(relative_t) # bond turning angle to +- pi
-            relative_d = sqrt(diff_x*diff_x + diff_y*diff_y)
-
-            # break large increment to smaller
-            if relative_d > max_forward:
-                relative_d = max_forward
-
-            logging.warning((relative_t, relative_d))
-            # exit
-            if relative_d < accuracy:
-                logging.info(f"dis to waypoint: {relative_d}, require {accuracy}")
-                return
-
-            # perform movement and calibrate
-            self.to_relative_turn(relative_t)
-            self.sonar_calibrate()
+        relative_t = target_t - est_t
+        relative_t = normalise_anlge(relative_t) # bond turning angle to +- pi
+        relative_d = sqrt(diff_x*diff_x + diff_y*diff_y)
 
 
-            self.to_relative_forward(relative_d)
+        logging.warning((relative_t, relative_d))
 
-            self.sonar_calibrate()
-            if self.debug_canvas:
-                self.debug_canvas.drawParticles(self.p_tuples, self.p_weights, self.get_pos_mean())
-                time.sleep(0.5)
+        # perform movement and calibrate
+        self.to_relative_turn(relative_t)
 
-            logging.warning(f"After calibration get var {self.get_pos_var()}")
+        obstacles_hit = self.to_relative_forward(relative_d)
 
+        if self.debug_canvas:
+            self.debug_canvas.drawParticles(self.p_tuples, self.p_weights, self.get_pos_mean())
+            self.debug_canvas.drawPoints([(x,y)])
 
-            # TODO: use turntable to seek alternative measurement
+        logging.warning(f"After calibration get var {self.get_pos_var()}")
 
-    def touch_bottle(self, push_dps = 100):
+        return obstacles_hit
+
+    def touch_bottle(self, push_dps = 400):
         # reset encoder
         self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
         self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
@@ -388,18 +369,22 @@ class RobotBase(brickpi3.BrickPi3):
 
         # spread particles
         err_e = np.random.normal(*np.array(self.gaussian_e)*abs(max_dis*2), self.p_count)
-        err_f = np.random.normal(*np.array(self.gaussian_f)*max_dis*2, self.p_count)
+        err_f = np.random.normal(*np.array(self.gaussian_f)*abs(max_dis*2), self.p_count)
+        err_touch = np.random.normal(*self.gaussian_push, self.p_count)
         for i in range(len(self.p_tuples)):
             _x, _y, _t = self.p_tuples[i]
             self.p_tuples[i] = (_x + cos(_t)*err_e[i],
                                 _y + sin(_t)*err_e[i],
-                                normalise_anlge( _t + err_f[i]))
+                                normalise_anlge( _t + err_f[i]+err_touch[i]))
 
     def to_relative_forward(self, distance):
         """
         This function will return True when hit obstacle
         """
-        backoff_dis = 10
+        if distance<0:
+            return
+
+        backoff_dis_expected = 17
 
         # perform movement
         hit_obstacle = False
@@ -415,24 +400,30 @@ class RobotBase(brickpi3.BrickPi3):
         farward_dis = self.get_motor_encoder(self.M_RIGHT)/self.stright_dpcm
 
         # backoff if hit obstacle
+        backoff_dis=0
         if hit_obstacle:
+            time.sleep(0.2)
             self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
             self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
             self.set_motor_dps(self.M_RIGHT | self.M_LEFT, - self.stright_dps)
-            while (self.get_motor_encoder(self.M_RIGHT) >= -backoff_dis*self.stright_dpcm):
+            while (self.get_motor_encoder(self.M_RIGHT) >= -backoff_dis_expected*self.stright_dpcm):
                 pass
             self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
-
-
+            backoff_dis = self.get_motor_encoder(self.M_RIGHT)/self.stright_dpcm # negative number
 
         # update model
-        inc_distance = np.random.normal(*np.array(self.gaussian_e)*abs(distance), self.p_count) + farward_dis - backoff_dis
-        err_f = np.random.normal(*np.array(self.gaussian_f)*distance, self.p_count)
+        inc_distance = np.random.normal(*np.array(self.gaussian_e)*abs(distance), self.p_count) + farward_dis + backoff_dis
+        err_f = np.random.normal(*np.array(self.gaussian_f)*(abs(farward_dis)+abs(backoff_dis)), self.p_count)
+        if backoff_dis != 0:
+            err_f += np.random.normal(*self.gaussian_push, self.p_count)
         for i in range(len(self.p_tuples)):
             _x, _y, _t = self.p_tuples[i]
             self.p_tuples[i] = (_x + cos(_t)*inc_distance[i],
                                 _y + sin(_t)*inc_distance[i],
                                 normalise_anlge( _t + err_f[i]))
+
+        if self.debug_canvas:
+            self.debug_canvas.drawParticles(self.p_tuples, self.p_weights, self.get_pos_mean())
 
         # TODO: increase of particle when hit obstacle
         return hit_obstacle
@@ -462,6 +453,9 @@ class RobotBase(brickpi3.BrickPi3):
             while (self.get_motor_encoder(self.M_RIGHT) > angle*self.turn_dpradian):
                 pass
         self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
+
+        if self.debug_canvas:
+            self.debug_canvas.drawParticles(self.p_tuples, self.p_weights, self.get_pos_mean())
 
 def normalise_anlge(theta):
     t = theta % (2*pi) #modulus will have the same sign as the denominator
@@ -527,6 +521,7 @@ class Canvas:
             display.append( (self.__screenX(x + cos(_t)*self.bearing_r),self.__screenY(y + sin(_t)*self.bearing_r)) + (round(_t,plot_dp),) + (100,) )
 
         print ("drawParticles:" + str(display))
+        time.sleep(1)
 
     def __screenX(self,x):
         return (x + self.margin)*self.scale
@@ -560,14 +555,17 @@ class Map:
         else:
             return False
 
-    def calculate_likelihood(self, x, y, t, z, bottle_detection=False, *, debug_m = None):
+    def calculate_likelihood(self, x, y, t, z, bottle_detection=False, *,min_wall = None, debug_m = None):
         """
         Return 0 for impossible value, None for unable to decide
         """
 
         # allow custom function to check if location is inside map
         if not self.inside_map(x,y):
-            return 0
+            if bottle_detection:
+                return (None, None)
+            else:
+                return None
 
         min_m = None
 
@@ -598,6 +596,8 @@ class Map:
             # all check passed, add if is closer
             if min_m is None or m<min_m:
                 min_m = m
+                if min_wall is not None:
+                    min_wall = wall
 
         if debug_m is not None:
             debug_m.append(min_m)

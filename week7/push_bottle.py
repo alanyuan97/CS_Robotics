@@ -12,4 +12,4 @@ mymap = Map()
 # to waypoint
 robot = RobotBase(BrickPi3.PORT_B, BrickPi3.PORT_C,BrickPi3.PORT_D, BrickPi3.PORT_4, mymap, p_start=(84.0,30.0,0), debug_canvas=canvas)
 
-robot.to_relative_forward(10)
+robot.to_relative_forward(100)

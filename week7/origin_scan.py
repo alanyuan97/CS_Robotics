@@ -41,13 +41,5 @@ calpoints = [(100,30),(120,30),(140,30),(160,30)]
 # canvas.drawParticles(robot.p_tuples, robot.p_weights)
 # print(f"location {robot.get_pos_mean()}")
 # sleep(1)./
-<<<<<<< HEAD
 result = robot.get_obstacles(-pi,pi,radians(2),0.4,True)
 print(f"Scanned angles : {result}")
-=======
-
-result  = robot.get_nearest_obstacles(-pi,pi,radians(2),0.3,True) # start:end:step:var:turn on debug flag
-sleep(1)
-print(f"Scanned angles : {result}")
-robot.set_sonar_rad(0,True)
->>>>>>> WK7: update compeition2

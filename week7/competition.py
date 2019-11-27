@@ -42,7 +42,7 @@ cfg_scan_a_range = (radians(-180), radians(180), radians(2))
 
 
 def calibrate_and_getbottle():
-    obstacles = robot.get_nearest_obstacles(-pi, pi, radians(2), DEBUG=True)
+    obstacles = robot.get_obstacles(-pi, pi, radians(2), DEBUG=True)
 
     walls_likelyhood = []
     _, walls = robot.identify_bottle(obstacles, walls_likely=walls_likelyhood)
@@ -135,7 +135,7 @@ a_done = areaA()
 c_done = areaC()
 
 robot.to_waypoint(60,30)
-c_calibrate_obs = robot.get_nearest_obstacles(-pi, pi, radians(2), DEBUG=True)
+c_calibrate_obs = robot.get_obstacles(-pi, pi, radians(2), DEBUG=True)
 
 if not c_done:
     areaC()

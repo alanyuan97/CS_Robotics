@@ -126,7 +126,7 @@ class RobotBase(brickpi3.BrickPi3):
 
         return
 
-    def get_nearest_obstacles(self,relative_start,relative_end,step,varthrs=0.4, DEBUG = False): # Return List ofBanana shape angle, parameters should be in radians
+    def get_nearest_obstacles(self,relative_start,relative_end,step,varthrs=0.4,DEBUG = False): # Return List ofBanana shape angle, parameters should be in radians
         """
         From sonar scan, find all banana shaped obstacles and return its center point and distance
         With respect to robot
@@ -148,6 +148,8 @@ class RobotBase(brickpi3.BrickPi3):
         for i in range(2,len(read_rad)-2):
             if read_dis[i-2] >= 255:
                 continue
+            if read_dis[i-2] <=10:
+                return None
             _var = np.var(read_dis[i-2:i+3])
             if _var==0 and start:
                 start_index = i
@@ -182,9 +184,15 @@ class RobotBase(brickpi3.BrickPi3):
             plt.savefig('scan.png')
 
         self.set_sonar_rad(-pi)
-
         return result
 
+    def get_obstacles(self,relative_start,relative_end,step,varthrs=0.4,DEBUG = False):
+        result = self.get_nearest_obstacles(relative_start,relative_end,step,varthrs,DEBUG = False)
+        while result is None:
+            # Repeat
+            self.to_relative_backward(10)
+            result = self.get_nearest_obstacles(relative_start,relative_end,step,varthrs,DEBUG = False)
+        return result
 
     def update_pos(self,walls, walls_likely):
         print(f"enter update pos with len{walls}, {walls_likely}")
@@ -428,6 +436,31 @@ class RobotBase(brickpi3.BrickPi3):
         # TODO: increase of particle when hit obstacle
         return hit_obstacle
 
+    def to_relative_backward(self, distance):
+        """
+        This function will solely perform backward run
+        """
+        # perform movement
+        self.offset_motor_encoder(self.M_RIGHT, self.get_motor_encoder(self.M_RIGHT))
+        self.offset_motor_encoder(self.M_LEFT, self.get_motor_encoder(self.M_LEFT))
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, -self.stright_dps )
+        while(self.get_motor_encoder(self.M_RIGHT) > -self.stright_dpcm*distance):
+            pass
+        self.set_motor_dps(self.M_RIGHT | self.M_LEFT, 0)
+
+        if self.debug_canvas:
+            self.debug_canvas.drawParticles(self.p_tuples, self.p_weights, self.get_pos_mean())
+
+        # update model
+        inc_distance = np.random.normal(*np.array(self.gaussian_e)*abs(distance), self.p_count) - distance
+        err_f = np.random.normal(*np.array(self.gaussian_f)*distance, self.p_count)
+        for i in range(len(self.p_tuples)):
+            _x, _y, _t = self.p_tuples[i]
+            self.p_tuples[i] = (_x + cos(_t)*inc_distance[i],
+                                _y + sin(_t)*inc_distance[i],
+                                normalise_anlge( _t + err_f[i]))
+
+        return
 
     def to_relative_turn(self, angle):
         # update model

@@ -42,7 +42,7 @@ cfg_scan_a_range = (radians(-180), radians(180), radians(2))
 
 
 def calibrate_and_getbottle():
-    obstacles = robot.get_obstacles(-pi, pi, radians(2), DEBUG=True)
+    obstacles = robot.get_nearest_obstacles(-pi, pi, radians(2), DEBUG=True)
 
     walls_likelyhood = []
     _, walls = robot.identify_bottle(obstacles, walls_likely=walls_likelyhood)
@@ -62,15 +62,14 @@ def calibrate_and_getbottle():
                 max_likely = _b_like
                 max_rad = _rad
 
-        if max_likely and max_likely>1.0e-100:
+        if max_likely:
             print(f"go to bottle with likely {max_likely}")
-            robot.to_relative_turn(max_rad)
-            robot.touch_bottle(300)
+        robot.to_relative_turn(_rad)
+        robot.touch_bottle(300)
 
         return True
     else:
         return False
-
 
 
 
@@ -79,15 +78,7 @@ def areaA():
     if robot.to_waypoint(126, 42):
         return True
 
-    if calibrate_and_getbottle():
-        return True
-
-    if robot.to_waypoint(168, 42):
-        return True
-
-    if calibrate_and_getbottle():
-        return True
-
+    return calibrate_and_getbottle()
 
 
 
@@ -97,24 +88,15 @@ def areaB():
         # hit bottle while travel to B, abort early
         return True
 
-    if calibrate_and_getbottle():
-        return True
-
-    if robot.to_waypoint(126, 168):
-        return True
-
-    if calibrate_and_getbottle():
-        return True
-
-    return False
+    return calibrate_and_getbottle()
 
 
 def areaC():
-    if robot.to_waypoint(42, 60):
-        return True
+    # if robot.to_waypoint(42, 42):
+    #     return True
 
-    if  calibrate_and_getbottle():
-        return True
+    # if  calibrate_and_getbottle():
+    #     return True
 
     if robot.to_waypoint(42, 106):
         return True
@@ -128,24 +110,14 @@ def areaC():
 #       Main      #
 #####################
 
-b_done =areaB()
+areaB()
 
-a_done = areaA()
+areaA()
 
-c_done = areaC()
+areaC()
 
-robot.to_waypoint(60,30)
-c_calibrate_obs = robot.get_obstacles(-pi, pi, radians(2), DEBUG=True)
-
-if not c_done:
-    areaC()
-
-if not a_done:
-    areaA()
-
-if not b_done:
-    areaB()
-
+robot.to_waypoint(84,30)
+c_calibrate_obs = robot.get_nearest_obstacles(-pi, pi, radians(2), DEBUG=True)
 walls_likelyhood = []
 _, walls = robot.identify_bottle(c_calibrate_obs,walls_likely=walls_likelyhood)
 robot.update_pos(walls, walls_likelyhood)

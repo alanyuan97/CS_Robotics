@@ -98,3 +98,6 @@ To achive this, there will be two type of account:
 ### Dev environment
 
 I would recommend everyone to VS Code with `Remote - SSH` extension. Set up git environment as you would on any Linux computer.
+
+# Team Photo
+![](/img/team.png)
